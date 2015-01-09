@@ -5,6 +5,10 @@
 .. |Travis| image:: https://api.travis-ci.org/scikit-learn/scikit-learn.png?branch=master
 .. _Travis: https://travis-ci.org/scikit-learn/scikit-learn
 
+personal-contributing
+=====================
+  add fast decision tree induction module into scikit-learn
+
 scikit-learn
 ============
 
