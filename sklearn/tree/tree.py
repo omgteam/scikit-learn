@@ -30,12 +30,14 @@ from ..utils import check_array, check_random_state
 
 from ._tree import Criterion
 from ._tree import Splitter
-from ._tree import DepthFirstTreeBuilder, BestFirstTreeBuilder
+from ._tree import DepthFirstTreeBuilder, BestFirstTreeBuilder, FastDepthFirstTreeBuilder, FastBestFirstTreeBuilder
 from ._tree import Tree
 from . import _tree
 
 __all__ = ["DecisionTreeClassifier",
            "DecisionTreeRegressor",
+           "FastDecisionTreeClassifier",
+           "FastDecisionTreeRegressor",
            "ExtraTreeClassifier",
            "ExtraTreeRegressor"]
 
@@ -51,10 +53,12 @@ CRITERIA_CLF = {"gini": _tree.Gini, "entropy": _tree.Entropy}
 CRITERIA_REG = {"mse": _tree.MSE, "friedman_mse": _tree.FriedmanMSE}
 
 DENSE_SPLITTERS = {"best": _tree.BestSplitter,
+                   "fastbest": _tree.FastBestSplitter,
                    "presort-best": _tree.PresortBestSplitter,
                    "random": _tree.RandomSplitter}
 
 SPARSE_SPLITTERS = {"best": _tree.BestSparseSplitter,
+                    "fastbest": _tree.FastBestSparseSplitter,
                     "random": _tree.RandomSparseSplitter}
 
 # =============================================================================
@@ -143,7 +147,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
         # Determine output settings
         n_samples, self.n_features_ = X.shape
         is_classification = isinstance(self, ClassifierMixin)
-
+        is_fast = isinstance(self, FastDecisionTreeClassifier) if is_classification else isinstance(self, FastDecisionTreeRegressor)
         y = np.atleast_1d(y)
 
         if y.ndim == 1:
@@ -273,16 +277,30 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
 
         # Use BestFirst if max_leaf_nodes given; use DepthFirst otherwise
         if max_leaf_nodes < 0:
-            builder = DepthFirstTreeBuilder(splitter, min_samples_split,
+            if is_fast:
+                builder = FastDepthFirstTreeBuilder(splitter, min_samples_split,
+                                            self.min_samples_leaf,
+                                            min_weight_leaf,
+                                            max_depth)
+            else: 
+                builder = DepthFirstTreeBuilder(splitter, min_samples_split,
                                             self.min_samples_leaf,
                                             min_weight_leaf,
                                             max_depth)
         else:
-            builder = BestFirstTreeBuilder(splitter, min_samples_split,
+            if is_fast:
+                builder = FastBestFirstTreeBuilder(splitter, min_samples_split,
                                            self.min_samples_leaf,
                                            min_weight_leaf,
                                            max_depth,
                                            max_leaf_nodes)
+            else:
+                builder = BestFirstTreeBuilder(splitter, min_samples_split,
+                                           self.min_samples_leaf,
+                                           min_weight_leaf,
+                                           max_depth,
+                                           max_leaf_nodes)
+
 
         builder.build(self.tree_, X, y, sample_weight)
 
@@ -592,6 +610,29 @@ class DecisionTreeClassifier(BaseDecisionTree, ClassifierMixin):
 
             return proba
 
+class FastDecisionTreeClassifier(DecisionTreeClassifier):
+    """A fast decision tree classifier"""
+    def __init__(self,
+                 criterion="gini",
+                 splitter="fastbest",
+                 max_depth=None,
+                 min_samples_split=2,
+                 min_samples_leaf=1,
+                 min_weight_fraction_leaf=0.,
+                 max_features=None,
+                 random_state=None,
+                 max_leaf_nodes=None):
+        super(FastDecisionTreeClassifier, self).__init__(
+            criterion=criterion,
+            splitter=splitter,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            min_weight_fraction_leaf=min_weight_fraction_leaf,
+            max_features=max_features,
+            max_leaf_nodes=max_leaf_nodes,
+            random_state=random_state)
+
 
 class DecisionTreeRegressor(BaseDecisionTree, RegressorMixin):
     """A decision tree regressor.
@@ -716,6 +757,30 @@ class DecisionTreeRegressor(BaseDecisionTree, RegressorMixin):
             max_features=max_features,
             max_leaf_nodes=max_leaf_nodes,
             random_state=random_state)
+
+class FastDecisionTreeRegressor(DecisionTreeRegressor):
+    """A fast decision tree regressor """
+    def __init__(self,
+                 criterion="mse",
+                 splitter="fastbest",
+                 max_depth=None,
+                 min_samples_split=2,
+                 min_samples_leaf=1,
+                 min_weight_fraction_leaf=0.,
+                 max_features=None,
+                 random_state=None,
+                 max_leaf_nodes=None):
+        super(FastDecisionTreeRegressor, self).__init__(
+            criterion=criterion,
+            splitter=splitter,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            min_weight_fraction_leaf=min_weight_fraction_leaf,
+            max_features=max_features,
+            max_leaf_nodes=max_leaf_nodes,
+            random_state=random_state)
+
 
 
 class ExtraTreeClassifier(DecisionTreeClassifier):
