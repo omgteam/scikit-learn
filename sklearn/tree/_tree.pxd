@@ -10,6 +10,7 @@
 
 import numpy as np
 cimport numpy as np
+from sklearn.tree._utils cimport FastStackRecord
 
 ctypedef np.npy_float32 DTYPE_t          # Type of X
 ctypedef np.npy_float64 DOUBLE_t         # Type of y, sample_weight
@@ -132,6 +133,13 @@ cdef class Splitter:
                          double impurity,   # Impurity of the node
                          SplitRecord* split,
                          SIZE_t* n_constant_features) nogil
+
+    cdef void fast_node_split(self,
+                         double impurity,   # Impurity of the node
+                         SplitRecord* split,
+                         SIZE_t* n_constant_features,
+                         FastStackRecord* stack_record) nogil
+
 
     cdef void node_value(self, double* dest) nogil
 

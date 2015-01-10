@@ -30,7 +30,7 @@ from ..utils import check_array, check_random_state
 
 from ._tree import Criterion
 from ._tree import Splitter
-from ._tree import DepthFirstTreeBuilder, BestFirstTreeBuilder, FastDepthFirstTreeBuilder, FastBestFirstTreeBuilder
+from ._tree import DepthFirstTreeBuilder, BestFirstTreeBuilder, FastDepthFirstTreeBuilder
 from ._tree import Tree
 from . import _tree
 
@@ -288,13 +288,6 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                             min_weight_leaf,
                                             max_depth)
         else:
-            if is_fast:
-                builder = FastBestFirstTreeBuilder(splitter, min_samples_split,
-                                           self.min_samples_leaf,
-                                           min_weight_leaf,
-                                           max_depth,
-                                           max_leaf_nodes)
-            else:
                 builder = BestFirstTreeBuilder(splitter, min_samples_split,
                                            self.min_samples_leaf,
                                            min_weight_leaf,

@@ -10,6 +10,8 @@ import numpy as np
 cimport numpy as np
 
 ctypedef np.npy_intp SIZE_t              # Type for indices and counters
+ctypedef np.npy_float32 DTYPE_t
+
 
 
 # =============================================================================
@@ -26,6 +28,18 @@ cdef struct StackRecord:
     double impurity
     SIZE_t n_constant_features
 
+cdef struct FastStackRecord:
+    SIZE_t start
+    SIZE_t end
+    SIZE_t depth
+    SIZE_t parent
+    bint is_left
+    double impurity
+    SIZE_t n_constant_features
+    DTYPE_t* gains
+    SIZE_t* gfeatures
+    bint is_smaller
+
 cdef class Stack:
     cdef SIZE_t capacity
     cdef SIZE_t top
@@ -36,6 +50,18 @@ cdef class Stack:
                   bint is_left, double impurity,
                   SIZE_t n_constant_features) nogil
     cdef int pop(self, StackRecord* res) nogil
+
+cdef class FastStack:
+    cdef SIZE_t capacity
+    cdef SIZE_t top
+    cdef FastStackRecord* stack_
+
+    cdef bint is_empty(self) nogil
+    cdef int push(self, SIZE_t start, SIZE_t end, SIZE_t depth, SIZE_t parent,
+                  bint is_left, double impurity,
+                  SIZE_t n_constant_features, DTYPE_t* gains, SIZE_t* gfeatures, bint is_smaller, SIZE_t n_features) nogil
+    cdef int pop(self, FastStackRecord* res) nogil
+
 
 
 # =============================================================================

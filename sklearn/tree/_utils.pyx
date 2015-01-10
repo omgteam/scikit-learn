@@ -9,6 +9,7 @@
 # Licence: BSD 3 clause
 
 from libc.stdlib cimport free, malloc, realloc
+from libc.string cimport memcpy
 
 # =============================================================================
 # Stack data structure
@@ -92,6 +93,97 @@ cdef class Stack:
         self.top = top - 1
 
         return 0
+
+cdef class FastStack:
+    """A LIFO data structure.
+
+    Attributes
+    ----------
+    capacity : SIZE_t
+        The elements the stack can hold; if more added then ``self.stack_``
+        needs to be resized.
+
+    top : SIZE_t
+        The number of elements currently on the stack.
+
+    stack : FastStackRecord pointer
+        The stack of records (upward in the stack corresponds to the right).
+    """
+
+    def __cinit__(self, SIZE_t capacity):
+        self.capacity = capacity
+        self.top = 0
+        self.stack_ = <FastStackRecord*> malloc(capacity * sizeof(FastStackRecord))
+        if self.stack_ == NULL:
+            raise MemoryError()
+
+    def __dealloc__(self):
+        free(self.stack_)
+
+    cdef bint is_empty(self) nogil:
+        return self.top <= 0
+
+    cdef int push(self, SIZE_t start, SIZE_t end, SIZE_t depth, SIZE_t parent,
+                  bint is_left, double impurity,
+                  SIZE_t n_constant_features, DTYPE_t* gains, SIZE_t* gfeatures, bint is_smaller, SIZE_t n_features) nogil:
+        """Push a new element onto the stack.
+
+        Returns 0 if successful; -1 on out of memory error.
+        """
+        cdef SIZE_t top = self.top
+        cdef FastStackRecord* stack = NULL
+
+        # Resize if capacity not sufficient
+        if top >= self.capacity:
+            self.capacity *= 2
+            stack = <FastStackRecord*> realloc(self.stack_,
+                                           self.capacity * sizeof(FastStackRecord))
+            if stack == NULL:
+                # no free; __dealloc__ handles that
+                return -1
+            self.stack_ = stack
+
+        stack = self.stack_
+        stack[top].start = start
+        stack[top].end = end
+        stack[top].depth = depth
+        stack[top].parent = parent
+        stack[top].is_left = is_left
+        stack[top].impurity = impurity
+        stack[top].n_constant_features = n_constant_features
+
+        stack[top].is_smaller = is_smaller
+        stack[top].gains = <DTYPE_t *> malloc(n_features * sizeof(DTYPE_t))
+        stack[top].gfeatures = <SIZE_t *> malloc(n_features * sizeof(SIZE_t))
+        if is_smaller:
+            memcpy(stack[top].gains, gains, sizeof(gains))
+        if gfeatures != NULL:
+            memcpy(stack[top].gfeatures, gfeatures, sizeof(gfeatures))
+        else:
+            for i in range(n_features):
+                gfeatures[i] = i
+
+        # Increment stack pointer
+        self.top = top + 1
+        return 0
+
+    cdef int pop(self, FastStackRecord* res) nogil:
+        """Remove the top element from the stack and copy to ``res``.
+
+        Returns 0 if pop was successful (and ``res`` is set); -1
+        otherwise.
+        """
+        cdef SIZE_t top = self.top
+        cdef FastStackRecord* stack = self.stack_
+
+        if top <= 0:
+            return -1
+
+        res[0] = stack[top - 1]
+        self.top = top - 1
+
+        return 0
+
 
 
 # =============================================================================
