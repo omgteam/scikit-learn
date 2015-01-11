@@ -15,7 +15,6 @@
 # Licence: BSD 3 clause
 
 from libc.stdlib cimport calloc, free, realloc, qsort
-from libc.stdio cimport printf
 
 from libc.string cimport memcpy, memset
 from libc.math cimport log as ln
@@ -1013,12 +1012,12 @@ cdef class Splitter:
 
         weighted_n_node_samples[0] = self.criterion.weighted_n_node_samples
 
-    cdef void node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find a split on node samples[start:end]."""
         pass
 
-    cdef void fast_node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t fast_node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features, FastStackRecord* stack_record, SIZE_t topK) nogil:
         """Find a split fastly on node samples[start:end]."""
         pass
@@ -1072,7 +1071,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                                self.min_weight_leaf,
                                self.random_state), self.__getstate__())
 
-    cdef void fast_node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t fast_node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features, FastStackRecord* stack_record, SIZE_t topK) nogil:
         """Find the best split on node samples[start:end]."""
         # Find the best split
@@ -1096,7 +1095,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef UINT32_t* random_state = &self.rand_r_state
 
         cdef SplitRecord best, current, current_best
-        cdef SIZE_t best_rank = n_features + 1
+        cdef SIZE_t best_rank = n_features 
 
         cdef SIZE_t f_i = n_features
         cdef SIZE_t f_j, p, tmp
@@ -1110,7 +1109,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef SIZE_t n_total_constants = n_known_constants
         cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
-        printf("is_smaller:%d, n_known_constants:%d\n", is_smaller, n_known_constants)
+        cdef SIZE_t num_feature_comp = 0
 
         _init_split(&best, end)
 
@@ -1148,9 +1147,6 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                            random_state)
             else:
                 f_j = f_i - 1
-            printf("f_j:%d\n", f_j)
-            printf("%d, %d, %d, %d\n", features[0], features[1], features[2], features[3])
-            printf("%lf, %lf, %lf, %lf\n", gains[0], gains[1], gains[2], gains[3])
 
             if f_j < n_known_constants:
                 # f_j in the interval [n_drawn_constants, n_known_constants[
@@ -1169,9 +1165,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                 if not is_smaller:
                     f_j += n_found_constants
                 # f_j in the interval [n_total_constants, f_i[
-                printf("11\n")
                 current.feature = features[f_j]
-                printf("feature:%d\n", current.feature)
 
                 # Sort samples along that feature; first copy the feature
                 # values for the active samples into Xf, s.t.
@@ -1182,7 +1176,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                               X_fx_stride * current.feature]
 
                 sort(Xf + start, samples + start, end - start)
-                printf("12\n")
+                num_feature_comp = num_feature_comp + 1
 
                 if Xf[end - 1] <= Xf[start] + FEATURE_THRESHOLD:
                     gains[f_j] = gains[n_total_constants]
@@ -1203,7 +1197,6 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     # Evaluate all splits
                     self.criterion.reset()
                     p = start
-                    printf("13\n")
 
                     while p < end:
                         while (p + 1 < end and
@@ -1250,20 +1243,15 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                         #calculate rank of best in gains
                         while is_smaller and best_rank <= f_j:
                             if gains[f_j - best_rank] <= best.improvement: 
-                                printf("update best rank, %lf, %lf, %d\n", gains[f_j - best_rank], best.improvement, best_rank)
                                 break
                             best_rank = best_rank + 1
 
                     else: #current is worse than best
                         best_rank = best_rank - 1
 
-                    printf("14\n")
-                    printf("feature:%d, gain:%lf\n", current.feature, current_best.improvement)                 
                     gains[f_i] = current_best.improvement #update improvement records, if is_smaller f_j = f_i 
                     if is_smaller and (f_j > 0) and (best_rank <= topK): #select updated features that are in top 1 
-                        printf("best_rank: %d, %lf, %lf\n", best_rank, best.improvement, gains[f_j - 1])
                         break
-        printf("1\n")
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
             partition_end = end
@@ -1280,11 +1268,8 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     tmp = samples[partition_end]
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
-        printf("2\n")
         #sort gains 
         sort(gains + n_total_constants, features + n_total_constants, n_features - n_total_constants) 
-        printf("%d, %d, %d, %d\n", features[0], features[1], features[2], features[3])
-        printf("%lf, %lf, %lf, %lf\n", gains[0], gains[1], gains[2], gains[3])
 
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
@@ -1296,10 +1281,9 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                features + n_known_constants,
                sizeof(SIZE_t) * n_found_constants)
         # Return values
-        printf("3\n")
         split[0] = best
         n_constant_features[0] = n_total_constants
-        printf("4\n")
+        return num_feature_comp
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -1311,7 +1295,7 @@ cdef class BestSplitter(BaseDenseSplitter):
                                self.min_weight_leaf,
                                self.random_state), self.__getstate__())
 
-    cdef void node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best split on node samples[start:end]."""
         # Find the best split
@@ -1346,6 +1330,7 @@ cdef class BestSplitter(BaseDenseSplitter):
         cdef SIZE_t n_total_constants = n_known_constants
         cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
+        cdef SIZE_t num_feature_computation = 0
 
         _init_split(&best, end)
 
@@ -1405,7 +1390,7 @@ cdef class BestSplitter(BaseDenseSplitter):
                               X_fx_stride * current.feature]
 
                 sort(Xf + start, samples + start, end - start)
-
+                num_feature_computation = num_feature_computation + 1
                 if Xf[end - 1] <= Xf[start] + FEATURE_THRESHOLD:
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
@@ -1489,6 +1474,8 @@ cdef class BestSplitter(BaseDenseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
+
+        return num_feature_computation
 
 
 # Sort n-element arrays pointed to by Xf and samples, simultaneously,
@@ -1610,7 +1597,7 @@ cdef class RandomSplitter(BaseDenseSplitter):
                                  self.min_weight_leaf,
                                  self.random_state), self.__getstate__())
 
-    cdef void node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best random split on node samples[start:end]."""
         # Draw random splits and pick the best
@@ -1801,6 +1788,7 @@ cdef class RandomSplitter(BaseDenseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
+        return 1
 
 
 cdef class PresortBestSplitter(BaseDenseSplitter):
@@ -1858,7 +1846,7 @@ cdef class PresortBestSplitter(BaseDenseSplitter):
             sample_mask = safe_realloc(&self.sample_mask, self.n_total_samples)
             memset(sample_mask, 0, self.n_total_samples)
 
-    cdef void node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best split on node samples[start:end]."""
         # Find the best split
@@ -2049,6 +2037,7 @@ cdef class PresortBestSplitter(BaseDenseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
+        return 1
 
 
 cdef class BaseSparseSplitter(Splitter):
@@ -2379,7 +2368,7 @@ cdef class FastBestSparseSplitter(BaseSparseSplitter):
                                      self.min_weight_leaf,
                                      self.random_state), self.__getstate__())
 
-    cdef void fast_node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t fast_node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features, FastStackRecord* stack_record, SIZE_t topK) nogil:
         """Find the best split on node samples[start:end], using sparse
            features.
@@ -2585,7 +2574,7 @@ cdef class FastBestSparseSplitter(BaseSparseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
-
+        return 1
 
 
 cdef class BestSparseSplitter(BaseSparseSplitter):
@@ -2598,7 +2587,7 @@ cdef class BestSparseSplitter(BaseSparseSplitter):
                                      self.min_weight_leaf,
                                      self.random_state), self.__getstate__())
 
-    cdef void node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find the best split on node samples[start:end], using sparse
            features.
@@ -2804,7 +2793,7 @@ cdef class BestSparseSplitter(BaseSparseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
-
+        return 1
 
 cdef class RandomSparseSplitter(BaseSparseSplitter):
     """Splitter for finding a random split, using the sparse data."""
@@ -2816,7 +2805,7 @@ cdef class RandomSparseSplitter(BaseSparseSplitter):
                                        self.min_weight_leaf,
                                        self.random_state), self.__getstate__())
 
-    cdef void node_split(self, double impurity, SplitRecord* split,
+    cdef SIZE_t node_split(self, double impurity, SplitRecord* split,
                          SIZE_t* n_constant_features) nogil:
         """Find a random split on node samples[start:end], using sparse
            features.
@@ -3019,6 +3008,7 @@ cdef class RandomSparseSplitter(BaseSparseSplitter):
         # Return values
         split[0] = best
         n_constant_features[0] = n_total_constants
+        return 1
 
 
 # =============================================================================
@@ -3027,11 +3017,11 @@ cdef class RandomSparseSplitter(BaseSparseSplitter):
 cdef class TreeBuilder:
     """Interface for different tree building strategies. """
 
-    cpdef build(self, Tree tree, object X, np.ndarray y,
+    cpdef SIZE_t build(self, Tree tree, object X, np.ndarray y,
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
         pass
-    cpdef fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
+    cpdef SIZE_t fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
         pass
@@ -3079,8 +3069,9 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
         self.min_samples_leaf = min_samples_leaf
         self.min_weight_leaf = min_weight_leaf
         self.max_depth = max_depth
+        self.num_feature_computation = 0
 
-    cpdef build(self, Tree tree, object X, np.ndarray y,
+    cpdef SIZE_t build(self, Tree tree, object X, np.ndarray y,
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
 
@@ -3166,7 +3157,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
                 is_leaf = is_leaf or (impurity <= MIN_IMPURITY_SPLIT)
 
                 if not is_leaf:
-                    splitter.node_split(impurity, &split, &n_constant_features)
+                    self.num_feature_computation = self.num_feature_computation + splitter.node_split(impurity, &split, &n_constant_features)
                     is_leaf = is_leaf or (split.pos >= end)
 
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,
@@ -3206,7 +3197,7 @@ cdef class DepthFirstTreeBuilder(TreeBuilder):
                 tree.max_depth = max_depth_seen
         if rc == -1:
             raise MemoryError()
-
+        return self.num_feature_computation
   
 
 # Fast depth first builder ----------------------------------------------------------
@@ -3222,8 +3213,9 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
         self.min_samples_leaf = min_samples_leaf
         self.min_weight_leaf = min_weight_leaf
         self.max_depth = max_depth
+        self.num_feature_computation = 0
 
-    cpdef fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
+    cpdef SIZE_t fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
 
@@ -3275,7 +3267,6 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
 
         cdef FastStack stack = FastStack(INITIAL_STACK_SIZE)
         cdef FastStackRecord stack_record
-        printf("build init\n")
 
         # push root node onto stack
         rc = stack.push(0, n_node_samples, 0, _TREE_UNDEFINED, 0, INFINITY, 0, NULL, NULL, 0, splitter.n_features)
@@ -3306,10 +3297,9 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
                 if first:
                     impurity = splitter.node_impurity()
                     first = 0
-                printf("node split\n")
                 is_leaf = is_leaf or (impurity <= MIN_IMPURITY_SPLIT)
                 if not is_leaf:
-                    splitter.fast_node_split(impurity, &split, &n_constant_features, &stack_record, topK)
+                    self.num_feature_computation = self.num_feature_computation + splitter.fast_node_split(impurity, &split, &n_constant_features, &stack_record, topK)
                     is_leaf = is_leaf or (split.pos >= end)
 
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,
@@ -3359,6 +3349,7 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
                 tree.max_depth = max_depth_seen
         if rc == -1:
             raise MemoryError()
+        return self.num_feature_computation
 
 # Best first builder ----------------------------------------------------------
 
@@ -3391,7 +3382,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
         self.max_depth = max_depth
         self.max_leaf_nodes = max_leaf_nodes
 
-    cpdef build(self, Tree tree, object X, np.ndarray y,
+    cpdef SIZE_t build(self, Tree tree, object X, np.ndarray y,
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
 
@@ -3501,6 +3492,7 @@ cdef class BestFirstTreeBuilder(TreeBuilder):
 
         if rc == -1:
             raise MemoryError()
+        return 1
 
     cdef inline int _add_split_node(self, Splitter splitter, Tree tree,
                                     SIZE_t start, SIZE_t end, double impurity,

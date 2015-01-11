@@ -129,12 +129,12 @@ cdef class Splitter:
     cdef void node_reset(self, SIZE_t start, SIZE_t end,
                          double* weighted_n_node_samples) nogil
 
-    cdef void node_split(self,
+    cdef SIZE_t node_split(self,
                          double impurity,   # Impurity of the node
                          SplitRecord* split,
                          SIZE_t* n_constant_features) nogil
 
-    cdef void fast_node_split(self,
+    cdef SIZE_t fast_node_split(self,
                          double impurity,   # Impurity of the node
                          SplitRecord* split,
                          SIZE_t* n_constant_features,
@@ -220,10 +220,11 @@ cdef class TreeBuilder:
     cdef SIZE_t min_samples_leaf    # Minimum number of samples in a leaf
     cdef double min_weight_leaf     # Minimum weight in a leaf
     cdef SIZE_t max_depth           # Maximal tree depth
+    cdef SIZE_t num_feature_computation #Num of feature improvement computation 
 
-    cpdef build(self, Tree tree, object X, np.ndarray y,
+    cpdef SIZE_t build(self, Tree tree, object X, np.ndarray y,
                 np.ndarray sample_weight=*)
-    cpdef fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
+    cpdef SIZE_t fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
                 np.ndarray sample_weight=*)
 
     cdef _check_input(self, object X, np.ndarray y, np.ndarray sample_weight)
