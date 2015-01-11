@@ -15,6 +15,7 @@
 # Licence: BSD 3 clause
 
 from libc.stdlib cimport calloc, free, realloc, qsort
+from libc.stdio cimport printf
 
 from libc.string cimport memcpy, memset
 from libc.math cimport log as ln
@@ -28,8 +29,6 @@ from scipy.sparse import issparse, csc_matrix, csr_matrix
 
 from sklearn.tree._utils cimport Stack, FastStack, StackRecord, FastStackRecord
 from sklearn.tree._utils cimport PriorityHeap, PriorityHeapRecord
-
-
 
 cdef extern from "numpy/arrayobject.h":
     object PyArray_NewFromDescr(object subtype, np.dtype descr,
@@ -1080,7 +1079,9 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef SIZE_t start = self.start
         cdef SIZE_t end = self.end
 
-        cdef SIZE_t* features = self.features
+        cdef SIZE_t* features = stack_record[0].gfeatures
+        cdef DTYPE_t* gains = stack_record[0].gains
+        cdef bint is_smaller = stack_record[0].is_smaller
         cdef SIZE_t* constant_features = self.constant_features
         cdef SIZE_t n_features = self.n_features
 
@@ -1093,7 +1094,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef double min_weight_leaf = self.min_weight_leaf
         cdef UINT32_t* random_state = &self.rand_r_state
 
-        cdef SplitRecord best, current
+        cdef SplitRecord best, current, current_best
 
         cdef SIZE_t f_i = n_features
         cdef SIZE_t f_j, p, tmp
@@ -1107,6 +1108,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef SIZE_t n_total_constants = n_known_constants
         cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
+        printf("is_smaller:%d, n_known_constants:%d\n", is_smaller, n_known_constants)
 
         _init_split(&best, end)
 
@@ -1139,9 +1141,14 @@ cdef class FastBestSplitter(BaseDenseSplitter):
             #   and aren't constant.
 
             # Draw a feature at random
-            
-            f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
+            if not is_smaller:
+                f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
                            random_state)
+            else:
+                f_j = f_i - 1
+            printf("f_j:%d\n", f_j)
+            printf("%d, %d, %d, %d\n", features[0], features[1], features[2], features[3])
+            printf("%lf, %lf, %lf, %lf\n", gains[0], gains[1], gains[2], gains[3])
 
             if f_j < n_known_constants:
                 # f_j in the interval [n_drawn_constants, n_known_constants[
@@ -1149,14 +1156,18 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                 features[f_j] = features[n_drawn_constants]
                 features[n_drawn_constants] = tmp
 
+                gains[f_j], gains[n_drawn_constants] = gains[n_drawn_constants], gains[f_j]
+
                 n_drawn_constants += 1
 
             else:
                 # f_j in the interval [n_known_constants, f_i - n_found_constants[
-                f_j += n_found_constants
+                if not is_smaller:
+                    f_j += n_found_constants
                 # f_j in the interval [n_total_constants, f_i[
-
+                printf("11\n")
                 current.feature = features[f_j]
+                printf("feature:%d\n", current.feature)
 
                 # Sort samples along that feature; first copy the feature
                 # values for the active samples into Xf, s.t.
@@ -1167,8 +1178,11 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                               X_fx_stride * current.feature]
 
                 sort(Xf + start, samples + start, end - start)
+                printf("12\n")
 
                 if Xf[end - 1] <= Xf[start] + FEATURE_THRESHOLD:
+                    gains[f_j] = gains[n_total_constants]
+                    gains[n_total_constants] = 0.
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
 
@@ -1178,10 +1192,14 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                 else:
                     f_i -= 1
                     features[f_i], features[f_j] = features[f_j], features[f_i]
+                    gains[f_i], gains[f_j] = gains[f_j], gains[f_i]
+
+                    _init_split(&current_best, end)
 
                     # Evaluate all splits
                     self.criterion.reset()
                     p = start
+                    printf("13\n")
 
                     while p < end:
                         while (p + 1 < end and
@@ -1220,7 +1238,15 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                                     current.threshold = Xf[p - 1]
 
                                 best = current  # copy
-
+                            if current.improvement > current_best.improvement:
+                                current_best = current
+                    printf("14\n")
+                    printf("feature:%d, gain:%lf\n", current.feature, current_best.improvement)                 
+                    gains[f_i] = current_best.improvement #update improvement records, if is_smaller f_j = f_i 
+                    if is_smaller and (f_j > 0) and (best.improvement > gains[f_j-1]): #select updated features that are in top 1 
+                        printf("%lf, %lf\n", best.improvement, gains[f_j - 1])
+                        break
+        printf("1\n")
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
             partition_end = end
@@ -1237,6 +1263,11 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     tmp = samples[partition_end]
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
+        printf("2\n")
+        #sort gains 
+        sort(gains + n_total_constants, features + n_total_constants, n_features - n_total_constants) 
+        printf("%d, %d, %d, %d\n", features[0], features[1], features[2], features[3])
+        printf("%lf, %lf, %lf, %lf\n", gains[0], gains[1], gains[2], gains[3])
 
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
@@ -1247,10 +1278,11 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         memcpy(constant_features + n_known_constants,
                features + n_known_constants,
                sizeof(SIZE_t) * n_found_constants)
-
         # Return values
+        printf("3\n")
         split[0] = best
         n_constant_features[0] = n_total_constants
+        printf("4\n")
 
 
 cdef class BestSplitter(BaseDenseSplitter):
@@ -3221,6 +3253,7 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
 
         cdef FastStack stack = FastStack(INITIAL_STACK_SIZE)
         cdef FastStackRecord stack_record
+        printf("build init\n")
 
         # push root node onto stack
         rc = stack.push(0, n_node_samples, 0, _TREE_UNDEFINED, 0, INFINITY, 0, NULL, NULL, 0, splitter.n_features)
@@ -3251,9 +3284,8 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
                 if first:
                     impurity = splitter.node_impurity()
                     first = 0
-
+                printf("node split\n")
                 is_leaf = is_leaf or (impurity <= MIN_IMPURITY_SPLIT)
-
                 if not is_leaf:
                     splitter.fast_node_split(impurity, &split, &n_constant_features, &stack_record)
                     is_leaf = is_leaf or (split.pos >= end)

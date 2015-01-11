@@ -9,7 +9,7 @@
 # Licence: BSD 3 clause
 
 from libc.stdlib cimport free, malloc, realloc
-from libc.string cimport memcpy
+from libc.string cimport memcpy, memset
 
 # =============================================================================
 # Stack data structure
@@ -155,13 +155,15 @@ cdef class FastStack:
         stack[top].is_smaller = is_smaller
         stack[top].gains = <DTYPE_t *> malloc(n_features * sizeof(DTYPE_t))
         stack[top].gfeatures = <SIZE_t *> malloc(n_features * sizeof(SIZE_t))
-        if is_smaller:
-            memcpy(stack[top].gains, gains, sizeof(gains))
+        if is_smaller and gains != NULL:
+            memcpy(stack[top].gains, gains, n_features * sizeof(DTYPE_t))
+        else:
+            memset(stack[top].gains, 0, n_features * sizeof(DTYPE_t))
         if gfeatures != NULL:
-            memcpy(stack[top].gfeatures, gfeatures, sizeof(gfeatures))
+            memcpy(stack[top].gfeatures, gfeatures, n_features * sizeof(SIZE_t))
         else:
             for i in range(n_features):
-                gfeatures[i] = i
+                stack[top].gfeatures[i] = i
 
         # Increment stack pointer
         self.top = top + 1
