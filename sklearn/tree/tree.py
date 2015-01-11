@@ -103,7 +103,7 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
         self.tree_ = None
         self.max_features_ = None
 
-    def fit(self, X, y, sample_weight=None, check_input=True):
+    def fit(self, X, y, sample_weight=None, check_input=True, topK = 1):
         """Build a decision tree from the training set (X, y).
 
         Parameters
@@ -294,8 +294,10 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
                                            max_depth,
                                            max_leaf_nodes)
 
-
-        builder.build(self.tree_, X, y, sample_weight)
+        if is_fast:
+            builder.fast_build(self.tree_, X, y, topK, sample_weight)
+        else:
+            builder.build(self.tree_, X, y, sample_weight)
 
         if self.n_outputs_ == 1:
             self.n_classes_ = self.n_classes_[0]

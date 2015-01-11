@@ -1019,7 +1019,7 @@ cdef class Splitter:
         pass
 
     cdef void fast_node_split(self, double impurity, SplitRecord* split,
-                         SIZE_t* n_constant_features, FastStackRecord* stack_record) nogil:
+                         SIZE_t* n_constant_features, FastStackRecord* stack_record, SIZE_t topK) nogil:
         """Find a split fastly on node samples[start:end]."""
         pass
 
@@ -1064,6 +1064,7 @@ cdef class BaseDenseSplitter(Splitter):
 
 cdef class FastBestSplitter(BaseDenseSplitter):
     """Fast splitter for finding the best split."""
+  
     def __reduce__(self):
         return (BestSplitter, (self.criterion,
                                self.max_features,
@@ -1072,7 +1073,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                                self.random_state), self.__getstate__())
 
     cdef void fast_node_split(self, double impurity, SplitRecord* split,
-                         SIZE_t* n_constant_features, FastStackRecord* stack_record) nogil:
+                         SIZE_t* n_constant_features, FastStackRecord* stack_record, SIZE_t topK) nogil:
         """Find the best split on node samples[start:end]."""
         # Find the best split
         cdef SIZE_t* samples = self.samples
@@ -1095,6 +1096,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef UINT32_t* random_state = &self.rand_r_state
 
         cdef SplitRecord best, current, current_best
+        cdef SIZE_t best_rank = n_features + 1
 
         cdef SIZE_t f_i = n_features
         cdef SIZE_t f_j, p, tmp
@@ -1160,6 +1162,8 @@ cdef class FastBestSplitter(BaseDenseSplitter):
 
                 n_drawn_constants += 1
 
+                best_rank = best_rank - 1
+
             else:
                 # f_j in the interval [n_known_constants, f_i - n_found_constants[
                 if not is_smaller:
@@ -1188,7 +1192,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
 
                     n_found_constants += 1
                     n_total_constants += 1
-
+                    best_rank = best_rank - 1
                 else:
                     f_i -= 1
                     features[f_i], features[f_j] = features[f_j], features[f_i]
@@ -1240,11 +1244,24 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                                 best = current  # copy
                             if current.improvement > current_best.improvement:
                                 current_best = current
+
+                    if current_best.improvement >= best.improvement: #current.feature has maximum gain yet
+                        best_rank = 1
+                        #calculate rank of best in gains
+                        while is_smaller and best_rank <= f_j:
+                            if gains[f_j - best_rank] <= best.improvement: 
+                                printf("update best rank, %lf, %lf, %d\n", gains[f_j - best_rank], best.improvement, best_rank)
+                                break
+                            best_rank = best_rank + 1
+
+                    else: #current is worse than best
+                        best_rank = best_rank - 1
+
                     printf("14\n")
                     printf("feature:%d, gain:%lf\n", current.feature, current_best.improvement)                 
                     gains[f_i] = current_best.improvement #update improvement records, if is_smaller f_j = f_i 
-                    if is_smaller and (f_j > 0) and (best.improvement > gains[f_j-1]): #select updated features that are in top 1 
-                        printf("%lf, %lf\n", best.improvement, gains[f_j - 1])
+                    if is_smaller and (f_j > 0) and (best_rank <= topK): #select updated features that are in top 1 
+                        printf("best_rank: %d, %lf, %lf\n", best_rank, best.improvement, gains[f_j - 1])
                         break
         printf("1\n")
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
@@ -2363,7 +2380,7 @@ cdef class FastBestSparseSplitter(BaseSparseSplitter):
                                      self.random_state), self.__getstate__())
 
     cdef void fast_node_split(self, double impurity, SplitRecord* split,
-                         SIZE_t* n_constant_features, FastStackRecord* stack_record) nogil:
+                         SIZE_t* n_constant_features, FastStackRecord* stack_record, SIZE_t topK) nogil:
         """Find the best split on node samples[start:end], using sparse
            features.
         """
@@ -3014,6 +3031,11 @@ cdef class TreeBuilder:
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
         pass
+    cpdef fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
+                np.ndarray sample_weight=None):
+        """Build a decision tree from the training set (X, y)."""
+        pass
+
 
     cdef inline _check_input(self, object X, np.ndarray y,
                              np.ndarray sample_weight):
@@ -3201,7 +3223,7 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
         self.min_weight_leaf = min_weight_leaf
         self.max_depth = max_depth
 
-    cpdef build(self, Tree tree, object X, np.ndarray y,
+    cpdef fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
                 np.ndarray sample_weight=None):
         """Build a decision tree from the training set (X, y)."""
 
@@ -3287,7 +3309,7 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
                 printf("node split\n")
                 is_leaf = is_leaf or (impurity <= MIN_IMPURITY_SPLIT)
                 if not is_leaf:
-                    splitter.fast_node_split(impurity, &split, &n_constant_features, &stack_record)
+                    splitter.fast_node_split(impurity, &split, &n_constant_features, &stack_record, topK)
                     is_leaf = is_leaf or (split.pos >= end)
 
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,

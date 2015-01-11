@@ -138,7 +138,8 @@ cdef class Splitter:
                          double impurity,   # Impurity of the node
                          SplitRecord* split,
                          SIZE_t* n_constant_features,
-                         FastStackRecord* stack_record) nogil
+                         FastStackRecord* stack_record, 
+                         SIZE_t topK) nogil
 
 
     cdef void node_value(self, double* dest) nogil
@@ -222,4 +223,7 @@ cdef class TreeBuilder:
 
     cpdef build(self, Tree tree, object X, np.ndarray y,
                 np.ndarray sample_weight=*)
+    cpdef fast_build(self, Tree tree, object X, np.ndarray y, SIZE_t topK,
+                np.ndarray sample_weight=*)
+
     cdef _check_input(self, object X, np.ndarray y, np.ndarray sample_weight)
