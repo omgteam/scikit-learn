@@ -357,7 +357,6 @@ cdef class ClassificationCriterion(Criterion):
         cdef SIZE_t label_count_stride = self.label_count_stride
         cdef double* label_count_total = self.label_count_total
         cdef SIZE_t k
-
         for k in range(n_outputs):
             memcpy(dest, label_count_total, n_classes[k] * sizeof(double))
             dest += label_count_stride
@@ -1260,7 +1259,6 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     
                     if is_smaller and (best_rank <= topK): #select updated features that are in top 1 
                         break
-#        printf("%d\n", num_feature_comp)
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
             partition_end = end
@@ -1277,8 +1275,9 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     tmp = samples[partition_end]
                     samples[partition_end] = samples[p]
                     samples[p] = tmp
-        #sort gains 
-        sort(gains + n_total_constants, features + n_total_constants, n_features - n_total_constants) 
+        #sort gains if child nodes are going to split again
+        if (((end - best.pos) >= 2*min_samples_leaf) or ((best.pos - start) >= 2*min_samples_leaf)):
+            sort(gains + n_total_constants, features + n_total_constants, n_features - n_total_constants) 
 
         # Respect invariant for constant features: the original order of
         # element in features[:n_known_constants] must be preserved for sibling
@@ -1375,7 +1374,6 @@ cdef class BestSplitter(BaseDenseSplitter):
 #            f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
 #                           random_state)
             f_j = f_i - 1 - n_found_constants
-#            printf("%d\n", f_j)
             if f_j < n_known_constants:
                 # f_j in the interval [n_drawn_constants, n_known_constants[
                 tmp = features[f_j]
@@ -3270,16 +3268,15 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
         cdef double threshold
         cdef double impurity = INFINITY
         cdef SIZE_t n_constant_features
-        cdef bint is_leaf
+        cdef bint is_leaf, to_reuse, to_split, reused
         cdef bint first = 1
         cdef SIZE_t max_depth_seen = -1
         cdef int rc = 0
 
         cdef FastStack stack = FastStack(INITIAL_STACK_SIZE)
         cdef FastStackRecord stack_record
-
         # push root node onto stack
-        rc = stack.push(0, n_node_samples, 0, _TREE_UNDEFINED, 0, INFINITY, 0, NULL, NULL, 0, splitter.n_features)
+        rc = stack.push(0, n_node_samples, 0, _TREE_UNDEFINED, 0, INFINITY, 0, NULL, NULL, 0, splitter.n_features, 0, 1)
         if rc == -1:
             # got return code -1 - out-of-memory
             raise MemoryError()
@@ -3315,39 +3312,53 @@ cdef class FastDepthFirstTreeBuilder(TreeBuilder):
                 node_id = tree._add_node(parent, is_left, is_leaf, split.feature,
                                          split.threshold, impurity, n_node_samples,
                                          weighted_n_node_samples)
-
                 if is_leaf:
                     # Don't store value for internal nodes
                     splitter.node_value(tree.value +
                                         node_id * tree.value_stride)
+                    if stack_record.gains != NULL:
+                        free(stack_record.gains)
+                        stack_record.gains = NULL
+                    if stack_record.gfeatures != NULL:
+                        free(stack_record.gfeatures)
+                        stack_record.gfeatures = NULL
 
                 else:
+                    to_reuse = 0
+                    reused = 0
+                    to_split = ((end - split.pos) >= min_samples_split)
+                    if (split.impurity_right < impurity) and to_split:
+                        to_reuse = 1
+                        reused = 1
                     # Push right child on stack
                     rc = stack.push(split.pos, end, depth + 1, node_id, 0,
                                     split.impurity_right, n_constant_features,
-                                    stack_record.gains, stack_record.gfeatures, split.impurity_left < impurity, splitter.n_features)
+                                    stack_record.gains, stack_record.gfeatures, 
+                                    split.impurity_right < impurity, splitter.n_features, to_reuse, to_split)
                     if rc == -1:
-                        if stack_record.gains != NULL:
-                            free(stack_record.gains)
-                        if stack_record.gfeatures != NULL:
-                            free(stack_record.gfeatures)
                         break
 
+                    to_split = ((split.pos - start) >= min_samples_split)
+
+                    if to_reuse:
+                        to_reuse = 0
+                    elif to_split:
+                        to_reuse = 1
+                        reused = 1
                     # Push left child on stack
                     rc = stack.push(start, split.pos, depth + 1, node_id, 1,
                                     split.impurity_left, n_constant_features, 
-                                    stack_record.gains, stack_record.gfeatures, split.impurity_right < impurity, splitter.n_features)
+                                    stack_record.gains, stack_record.gfeatures, 
+                                    split.impurity_left < impurity, splitter.n_features, to_reuse, to_split)
                     if rc == -1:
+                        break
+                    if not reused:
                         if stack_record.gains != NULL:
                             free(stack_record.gains)
+                            stack_record.gains = NULL
                         if stack_record.gfeatures != NULL:
                             free(stack_record.gfeatures)
-                        break
-
-                if stack_record.gains != NULL:
-                    free(stack_record.gains)
-                if stack_record.gfeatures != NULL:
-                    free(stack_record.gfeatures)
+                            stack_record.gfeatures = NULL
 
                 if depth > max_depth_seen:
                     max_depth_seen = depth

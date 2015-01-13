@@ -59,7 +59,9 @@ cdef class FastStack:
     cdef bint is_empty(self) nogil
     cdef int push(self, SIZE_t start, SIZE_t end, SIZE_t depth, SIZE_t parent,
                   bint is_left, double impurity,
-                  SIZE_t n_constant_features, DTYPE_t* gains, SIZE_t* gfeatures, bint is_smaller, SIZE_t n_features) nogil
+                  SIZE_t n_constant_features, 
+                  DTYPE_t* gains, SIZE_t* gfeatures, bint is_smaller, SIZE_t n_features, 
+                  bint to_reuse, bint to_split) nogil
     cdef int pop(self, FastStackRecord* res) nogil
 
 

@@ -125,7 +125,9 @@ cdef class FastStack:
 
     cdef int push(self, SIZE_t start, SIZE_t end, SIZE_t depth, SIZE_t parent,
                   bint is_left, double impurity,
-                  SIZE_t n_constant_features, DTYPE_t* gains, SIZE_t* gfeatures, bint is_smaller, SIZE_t n_features) nogil:
+                  SIZE_t n_constant_features, DTYPE_t* gains, 
+                  SIZE_t* gfeatures, bint is_smaller, SIZE_t n_features, 
+                  bint to_reuse, bint to_split) nogil:
         """Push a new element onto the stack.
 
         Returns 0 if successful; -1 on out of memory error.
@@ -153,17 +155,32 @@ cdef class FastStack:
         stack[top].n_constant_features = n_constant_features
 
         stack[top].is_smaller = is_smaller
-        stack[top].gains = <DTYPE_t *> malloc(n_features * sizeof(DTYPE_t))
-        stack[top].gfeatures = <SIZE_t *> malloc(n_features * sizeof(SIZE_t))
-        if is_smaller and gains != NULL:
-            memcpy(stack[top].gains, gains, n_features * sizeof(DTYPE_t))
-        else:
-            memset(stack[top].gains, 0, n_features * sizeof(DTYPE_t))
-        if gfeatures != NULL:
-            memcpy(stack[top].gfeatures, gfeatures, n_features * sizeof(SIZE_t))
-        else:
-            for i in range(n_features):
-                stack[top].gfeatures[i] = i
+        stack[top].gains = NULL
+        stack[top].gfeatures = NULL 
+
+        if not to_split:
+            # Increment stack pointer
+            self.top = top + 1
+            return 0
+           
+        if not to_reuse: #malloc new memory
+            stack[top].gains = <DTYPE_t *> malloc(n_features * sizeof(DTYPE_t))
+            stack[top].gfeatures = <SIZE_t *> malloc(n_features * sizeof(SIZE_t))
+            if is_smaller: # keep the same as gains and gfeatures, ignoring constant features
+               memcpy(stack[top].gains + n_constant_features, gains + n_constant_features, 
+                       (n_features - n_constant_features)*sizeof(DTYPE_t)) 
+               memcpy(stack[top].gfeatures+ n_constant_features, gfeatures + n_constant_features, 
+                       (n_features - n_constant_features)*sizeof(SIZE_t)) 
+            else: 
+               if gfeatures == NULL: #root node
+                   for i in range(n_features):
+                       stack[top].gfeatures[i] = i
+               else: #non-root node, keep the same as parent node of gfeatures, ignoring constant features
+                   memcpy(stack[top].gfeatures+ n_constant_features, gfeatures + n_constant_features, 
+                       (n_features - n_constant_features)*sizeof(SIZE_t)) 
+        else: # reuse parent node memory
+            stack[top].gains = gains
+            stack[top].gfeatures = gfeatures
 
         # Increment stack pointer
         self.top = top + 1
