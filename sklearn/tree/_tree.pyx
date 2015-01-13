@@ -15,6 +15,7 @@
 # Licence: BSD 3 clause
 
 from libc.stdlib cimport calloc, free, realloc, qsort
+from libc.stdio cimport printf
 
 from libc.string cimport memcpy, memset
 from libc.math cimport log as ln
@@ -1142,11 +1143,12 @@ cdef class FastBestSplitter(BaseDenseSplitter):
             #   and aren't constant.
 
             # Draw a feature at random
-            if not is_smaller:
-                f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
-                           random_state)
-            else:
-                f_j = f_i - 1
+#            if not is_smaller:
+#                f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
+#                           random_state)
+#            else:
+#                f_j = f_i - 1
+            f_j = f_i - 1 - n_found_constants
 
             if f_j < n_known_constants:
                 # f_j in the interval [n_drawn_constants, n_known_constants[
@@ -1162,8 +1164,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
 
             else:
                 # f_j in the interval [n_known_constants, f_i - n_found_constants[
-                if not is_smaller:
-                    f_j += n_found_constants
+                f_j += n_found_constants
                 # f_j in the interval [n_total_constants, f_i[
                 current.feature = features[f_j]
 
@@ -1183,6 +1184,8 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     gains[n_total_constants] = 0.
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
+#                    if is_smaller:
+#                        num_feature_comp = num_feature_comp + 1
 
                     n_found_constants += 1
                     n_total_constants += 1
@@ -1249,9 +1252,15 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     else: #current is worse than best
                         best_rank = best_rank - 1
 
+                    #count features that violate upper bound
+#                    if is_smaller and (gains[f_i] < current_best.improvement):
+#                        num_feature_comp = num_feature_comp + 1
+
                     gains[f_i] = current_best.improvement #update improvement records, if is_smaller f_j = f_i 
-                    if is_smaller and (f_j > 0) and (best_rank <= topK): #select updated features that are in top 1 
+                    
+                    if is_smaller and (best_rank <= topK): #select updated features that are in top 1 
                         break
+#        printf("%d\n", num_feature_comp)
         # Reorganize into samples[start:best.pos] + samples[best.pos:end]
         if best.pos < end:
             partition_end = end
@@ -1363,9 +1372,10 @@ cdef class BestSplitter(BaseDenseSplitter):
             #   and aren't constant.
 
             # Draw a feature at random
-            f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
-                           random_state)
-
+#            f_j = rand_int(n_drawn_constants, f_i - n_found_constants,
+#                           random_state)
+            f_j = f_i - 1 - n_found_constants
+#            printf("%d\n", f_j)
             if f_j < n_known_constants:
                 # f_j in the interval [n_drawn_constants, n_known_constants[
                 tmp = features[f_j]

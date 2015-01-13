@@ -186,9 +186,9 @@ class BaseDecisionTree(six.with_metaclass(ABCMeta, BaseEstimator,
 
         if isinstance(self.max_features, six.string_types):
             if self.max_features == "auto":
-                if is_classification:
-                    max_features = max(1, int(np.sqrt(self.n_features_)))
-                else:
+#                if is_classification:
+#                    max_features = max(1, int(np.sqrt(self.n_features_)))
+#                else:
                     max_features = self.n_features_
             elif self.max_features == "sqrt":
                 max_features = max(1, int(np.sqrt(self.n_features_)))
