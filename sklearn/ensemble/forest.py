@@ -55,7 +55,8 @@ from ..externals import six
 from ..feature_selection.from_model import _LearntSelectorMixin
 from ..metrics import r2_score
 from ..preprocessing import OneHotEncoder
-from ..tree import (DecisionTreeClassifier, DecisionTreeRegressor,
+from ..tree import (FastDecisionTreeClassifier, FastDecisionTreeRegressor,
+                    DecisionTreeClassifier, DecisionTreeRegressor,
                     ExtraTreeClassifier, ExtraTreeRegressor)
 from ..tree._tree import DTYPE, DOUBLE
 from ..utils import check_random_state, check_array
@@ -742,6 +743,7 @@ class RandomForestClassifier(ForestClassifier):
     DecisionTreeClassifier, ExtraTreesClassifier
     """
     def __init__(self,
+                 base_estimator=DecisionTreeClassifier(),
                  n_estimators=10,
                  criterion="gini",
                  max_depth=None,
@@ -757,7 +759,7 @@ class RandomForestClassifier(ForestClassifier):
                  verbose=0,
                  warm_start=False):
         super(RandomForestClassifier, self).__init__(
-            base_estimator=DecisionTreeClassifier(),
+            base_estimator=base_estimator,
             n_estimators=n_estimators,
             estimator_params=("criterion", "max_depth", "min_samples_split",
                               "min_samples_leaf", "min_weight_fraction_leaf",

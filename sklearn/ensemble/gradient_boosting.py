@@ -42,9 +42,9 @@ from ..utils.stats import _weighted_percentile
 from ..externals import six
 from ..feature_selection.from_model import _LearntSelectorMixin
 
-from ..tree.tree import DecisionTreeRegressor
+from ..tree.tree import DecisionTreeRegressor, FastDecisionTreeRegressor
 from ..tree._tree import DTYPE, TREE_LEAF
-from ..tree._tree import PresortBestSplitter
+from ..tree._tree import BestSplitter, FastBestSplitter
 from ..tree._tree import FriedmanMSE
 
 from ._gradient_boosting import predict_stages
@@ -692,7 +692,7 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
                  min_samples_leaf, min_weight_fraction_leaf,
                  max_depth, init, subsample, max_features,
                  random_state, alpha=0.9, verbose=0, max_leaf_nodes=None,
-                 warm_start=False):
+                 warm_start=False, to_fast=False):
 
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
@@ -709,6 +709,7 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
         self.verbose = verbose
         self.max_leaf_nodes = max_leaf_nodes
         self.warm_start = warm_start
+        self.to_fast = to_fast
 
         self.estimators_ = np.empty((0, 0), dtype=np.object)
 
@@ -726,9 +727,21 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
 
             residual = loss.negative_gradient(y, y_pred, k=k,
                                               sample_weight=sample_weight)
-
+            tree = None
             # induce regression tree on residuals
-            tree = DecisionTreeRegressor(
+            if not self.to_fast:
+              tree = DecisionTreeRegressor(
+                criterion=criterion,
+                splitter=splitter,
+                max_depth=self.max_depth,
+                min_samples_split=self.min_samples_split,
+                min_samples_leaf=self.min_samples_leaf,
+                min_weight_fraction_leaf=self.min_weight_fraction_leaf,
+                max_features=self.max_features,
+                max_leaf_nodes=self.max_leaf_nodes,
+                random_state=random_state)
+            else:
+              tree = FastDecisionTreeRegressor(
                 criterion=criterion,
                 splitter=splitter,
                 max_depth=self.max_depth,
@@ -982,7 +995,15 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble,
 
         # init criterion and splitter
         criterion = FriedmanMSE(1)
-        splitter = PresortBestSplitter(criterion,
+        splitter = None
+        if not self.to_fast:
+            splitter = BestSplitter(criterion,
+                                       self.max_features_,
+                                       self.min_samples_leaf,
+                                       self.min_weight_fraction_leaf,
+                                       random_state)
+        else:
+            splitter = FastBestSplitter(criterion,
                                        self.max_features_,
                                        self.min_samples_leaf,
                                        self.min_weight_fraction_leaf,
@@ -1267,7 +1288,7 @@ class GradientBoostingClassifier(BaseGradientBoosting, ClassifierMixin):
                  min_samples_leaf=1, min_weight_fraction_leaf=0.,
                  max_depth=3, init=None, random_state=None,
                  max_features=None, verbose=0,
-                 max_leaf_nodes=None, warm_start=False):
+                 max_leaf_nodes=None, warm_start=False, to_fast=False):
 
         super(GradientBoostingClassifier, self).__init__(
             loss=loss, learning_rate=learning_rate, n_estimators=n_estimators,
@@ -1277,7 +1298,7 @@ class GradientBoostingClassifier(BaseGradientBoosting, ClassifierMixin):
             max_depth=max_depth, init=init, subsample=subsample,
             max_features=max_features,
             random_state=random_state, verbose=verbose,
-            max_leaf_nodes=max_leaf_nodes, warm_start=warm_start)
+            max_leaf_nodes=max_leaf_nodes, warm_start=warm_start, to_fast=to_fast)
 
     def _validate_y(self, y):
         self.classes_, y = np.unique(y, return_inverse=True)
@@ -1513,7 +1534,7 @@ class GradientBoostingRegressor(BaseGradientBoosting, RegressorMixin):
                  min_samples_leaf=1, min_weight_fraction_leaf=0.,
                  max_depth=3, init=None, random_state=None,
                  max_features=None, alpha=0.9, verbose=0, max_leaf_nodes=None,
-                 warm_start=False):
+                 warm_start=False, to_fast=False):
 
         super(GradientBoostingRegressor, self).__init__(
             loss=loss, learning_rate=learning_rate, n_estimators=n_estimators,
@@ -1523,7 +1544,7 @@ class GradientBoostingRegressor(BaseGradientBoosting, RegressorMixin):
             max_depth=max_depth, init=init, subsample=subsample,
             max_features=max_features,
             random_state=random_state, alpha=alpha, verbose=verbose,
-            max_leaf_nodes=max_leaf_nodes, warm_start=warm_start)
+            max_leaf_nodes=max_leaf_nodes, warm_start=warm_start, to_fast=to_fast)
 
     def predict(self, X):
         """Predict regression target for X.

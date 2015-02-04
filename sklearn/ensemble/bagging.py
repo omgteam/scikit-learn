@@ -17,7 +17,7 @@ from ..externals.joblib import Parallel, delayed
 from ..externals.six import with_metaclass
 from ..externals.six.moves import zip
 from ..metrics import r2_score, accuracy_score
-from ..tree import DecisionTreeClassifier, DecisionTreeRegressor
+from ..tree import FastDecisionTreeClassifier, FastDecisionTreeRegressor, DecisionTreeClassifier, DecisionTreeRegressor
 from ..utils import check_random_state, check_X_y, check_array, column_or_1d
 from ..utils.random import sample_without_replacement
 

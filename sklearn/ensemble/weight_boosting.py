@@ -34,7 +34,7 @@ from ..externals import six
 from ..externals.six.moves import zip
 from ..externals.six.moves import xrange as range
 from .forest import BaseForest
-from ..tree import DecisionTreeClassifier, DecisionTreeRegressor
+from ..tree import DecisionTreeClassifier, DecisionTreeRegressor, FastDecisionTreeClassifier, FastDecisionTreeRegressor
 from ..tree.tree import BaseDecisionTree
 from ..tree._tree import DTYPE
 from ..utils import check_array, check_X_y, check_random_state

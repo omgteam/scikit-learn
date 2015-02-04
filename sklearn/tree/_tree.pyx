@@ -1095,7 +1095,6 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef UINT32_t* random_state = &self.rand_r_state
 
         cdef SplitRecord best, current, current_best
-        cdef SIZE_t best_rank = n_features 
 
         cdef SIZE_t f_i = n_features
         cdef SIZE_t f_j, p, tmp
@@ -1110,6 +1109,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
         cdef DTYPE_t current_feature_value
         cdef SIZE_t partition_end
         cdef SIZE_t num_feature_comp = 0
+        cdef SIZE_t best_rank = n_features - n_known_constants
 
         _init_split(&best, end)
 
@@ -1183,8 +1183,6 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                     gains[n_total_constants] = 0.
                     features[f_j] = features[n_total_constants]
                     features[n_total_constants] = current.feature
-#                    if is_smaller:
-#                        num_feature_comp = num_feature_comp + 1
 
                     n_found_constants += 1
                     n_total_constants += 1
@@ -1228,7 +1226,7 @@ cdef class FastBestSplitter(BaseDenseSplitter):
 
                             current.improvement = self.criterion.impurity_improvement(impurity)
 
-                            if current.improvement > best.improvement:
+                            if current.improvement > current_best.improvement:
                                 self.criterion.children_impurity(&current.impurity_left,
                                                                  &current.impurity_right)
                                 current.threshold = (Xf[p - 1] + Xf[p]) / 2.0
@@ -1236,11 +1234,10 @@ cdef class FastBestSplitter(BaseDenseSplitter):
                                 if current.threshold == Xf[p]:
                                     current.threshold = Xf[p - 1]
 
-                                best = current  # copy
-                            if current.improvement > current_best.improvement:
-                                current_best = current
+                                current_best = current  # copy
 
-                    if current_best.improvement >= best.improvement: #current.feature has maximum gain yet
+                    if current_best.improvement > best.improvement: #current.feature has maximum gain yet
+                        best = current_best
                         best_rank = 1
                         #calculate rank of best in gains
                         while is_smaller and best_rank <= f_j:
