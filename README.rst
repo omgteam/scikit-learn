@@ -8,14 +8,21 @@
 personal-contributing
 =====================
   add fast decision tree induction module into scikit-learn
+  
   usage:
+  
   from sklearn import tree
+  
   X = ..
+  
   Y = ..
+  
   clf =  tree.FastDecisionTreeClassifier()
+  
   clf.fit(X,Y)
   
   reg = tree.FastDecisionTreeRegressor()
+  
   reg.fit(X,Y)
   
 scikit-learn
